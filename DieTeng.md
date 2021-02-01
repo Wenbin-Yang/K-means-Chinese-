@@ -11,7 +11,6 @@ output: html_document
 
 ---
 # **介绍**
-这是上海叠腾网络科技有限公司的面试题。
 
 笔试说明： 
     数据表第一行是列名，列0代表y，列1-6代表x1-x6；
@@ -20,10 +19,6 @@ output: html_document
 本人通过观察分析数据，最终建立多重线性回归模型，并发现数据存在多重共线性等问题，需要降维。
 以下为本人对数据的分析的过程。
 
-<p style="font-family: times, serif; font-size:18pt; font-style:italic">
-本人保证，此笔试题由杨文斌独立完成，部分内容参考互联网，没有任何作弊行为，如有不实，本人愿意负法律责任。
-</p>
-<div style="text-align: right"> **杨文斌** </div>
 
 
 # **读取数据** {.tabset .tabset-fade .tabset-pills}
