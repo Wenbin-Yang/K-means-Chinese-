@@ -21,7 +21,7 @@ output: html_document
 
 
 
-# **读取数据** {.tabset .tabset-fade .tabset-pills}
+# **读取数据** 
 ## 载入数据/包
 
 ```r
