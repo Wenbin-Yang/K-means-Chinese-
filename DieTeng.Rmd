@@ -1,0 +1,462 @@
+---
+title: "K-means(Chinese)"
+author: "wenbin"
+date: "2/1/2021"
+output: html_document
+---
+
+---
+
+
+
+---
+# **介绍**
+这是上海叠腾网络科技有限公司的面试题。
+
+笔试说明： 
+    数据表第一行是列名，列0代表y，列1-6代表x1-x6；
+    请对数据进行分析，给出分析过程和结论，并进行建模和模型评价，在建模过程中考虑降维的可能性并给出理由。
+
+本人通过观察分析数据，最终建立多重线性回归模型，并发现数据存在多重共线性等问题，需要降维。
+以下为本人对数据的分析的过程。
+
+<p style="font-family: times, serif; font-size:18pt; font-style:italic">
+本人保证，此笔试题由杨文斌独立完成，部分内容参考互联网，没有任何作弊行为，如有不实，本人愿意负法律责任。
+</p>
+<div style="text-align: right"> **杨文斌** </div>
+
+
+# **读取数据** {.tabset .tabset-fade .tabset-pills}
+## 载入数据/包
+```{r message=FALSE, warning=FALSE}
+data <- read.csv('~/Desktop/test_1.csv',stringsAsFactors=FALSE)
+library(ggplot2)
+library(car)
+library(corrplot)
+```
+
+## 重命名列标题
+```{r message=FALSE, warning=FALSE}
+colnames(data)[1] <- 'y'
+names(data)[c(2:7)]<- c('x1','x2','x3','x4','x5','x6')
+```
+# **分析数据**
+## 总览数据
+```{r message=FALSE, warning=FALSE}
+summary(data)
+str(data)
+dim(data)
+# 去掉方差为0 的行，这些本身没有意义，也妨碍后续运算
+data <- data[apply(data, 1, var)!=0,]
+```
+
+## 简易图，找规律
+```{r message=FALSE, warning=FALSE}
+#散点图
+par(mfrow = c(3,2))
+ggplot(data, aes(x1, y)) +geom_point()
+ggplot(data, aes(x2, y)) +geom_point()
+ggplot(data, aes(x3, y)) +geom_point()
+ggplot(data, aes(x4, y)) +geom_point()
+ggplot(data, aes(x5, y)) +geom_point()
+ggplot(data, aes(x6, y)) +geom_point()
+
+```
+
+```{r message=FALSE, warning=FALSE}
+#密度图
+par(mfrow = c(3,2))
+ggplot(data, aes(x= x1, fill = y)) +geom_density(alpha = 0.3)
+ggplot(data, aes(x= x2, fill = y)) +geom_density(alpha = 0.3)
+ggplot(data, aes(x= x3, fill = y)) +geom_density(alpha = 0.3)
+ggplot(data, aes(x= x4, fill = y)) +geom_density(alpha = 0.3)
+ggplot(data, aes(x= x5, fill = y)) +geom_density(alpha = 0.3)
+ggplot(data, aes(x= x6, fill = y)) +geom_density(alpha = 0.3)
+
+```
+
+```{r message=FALSE, warning=FALSE}
+#箱形图
+par(mfrow = c(3,2))
+ggplot(data, aes(x1, y)) +  geom_boxplot(notch = TRUE) + 
+  scale_fill_brewer(palette = "Pastel2")
+```
+
+```{r message=FALSE, warning=FALSE}
+# 拟合回归线段以及95置信域的散点图
+par(mfrow = c(3,2))
+ggplot(data, aes(x1, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+ggplot(data, aes(x2, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+ggplot(data, aes(x3, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+ggplot(data, aes(x4, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+ggplot(data, aes(x5, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+ggplot(data, aes(x6, y)) +geom_point() +
+  scale_colour_brewer(palette = "Set1") +geom_smooth()
+
+```
+```{r message=FALSE, warning=FALSE}
+#查看相关性
+data_cor <- cor(data)
+scatterplotMatrix(data) 
+```
+由以上图形可知，y与x的相关性不强,需进行量化比较
+
+## 量化比较
+```{r message=FALSE, warning=FALSE}
+corrplot(corr = data_cor, method = 'color', 
+         addCoef.col="grey") 
+```
+```{r message=FALSE, warning=FALSE}
+library(psych)
+pairs.panels(data) 
+```
+## 结论1:数据相关性分析
+可以明显看出y和x1,x6呈负相关关系，系数分别为-0.09及-0.01，
+y和x2呈中度正相关关系，与x4低度相关,
+与其他不相关或相关性很弱以至于没有实际价值
+
+# **建模——K-means模型**
+
+## 筛选数据
+```{r message=FALSE, warning=FALSE}
+data_x <- data[,2:7]
+```
+
+## 定义kmeans函数
+```{r message=FALSE, warning=FALSE}
+customKmeans<-function(dataset=NA,k=NA){
+  if(is.na(dataset) || is.na(k)){
+    stop("You must input valid parameters!!")
+  }
+  #计算两点之间欧式距离的函数
+  Eudist<-function(x,y){
+    distance<-sqrt(sum((x-y)^2))
+    return (distance)
+  }
+  rows.dataset<-nrow(dataset)
+  continue.change=TRUE
+  initPoint<-dataset[sample.int(rows.dataset,size = k),]
+  formerPoint<-initPoint
+  iterPoint<-matrix(0,nrow = k,ncol = ncol(dataset))
+  #记录每一个点到每一个类的距离
+  error.matrix<-matrix(0,nrow=rows.dataset,ncol=k)
+  while(continue.change){
+    #记录每个点所属的类是哪一个
+    cluster.matrix<-matrix(0,nrow=rows.dataset,ncol=k)
+    for(i in 1:rows.dataset){
+      #计算每个点到三个初始中心点的距离
+      for(j in 1:k){
+        error.matrix[i,j]<-Eudist(dataset[i,],formerPoint[j,])
+      }
+    }
+    #将每一个点所属的类计算出来
+    for(i in 1:rows.dataset){
+      cluster.matrix[i,which.min(error.matrix[i,])]<-1
+    }
+    #更新新的质心位置
+    for(i in 1:k){
+      iterPoint[i,]<-apply(dataset[which(cluster.matrix[,i] == 1),]
+                           ,2,"mean")
+    }
+    all.true<-c()
+    #判断中心点是否已经保持不变
+    for(i in 1:k){
+      if(all(formerPoint[i,] == iterPoint[i,]) == T){
+        all.true[i]<-TRUE
+      }
+    }
+    formerPoint = iterPoint
+    continue.change=ifelse(all(all.true) == T,F,T)
+  }
+  colnames(iterPoint)<-colnames(dataset)
+  out=list()
+  out[["centers"]]<-iterPoint
+  out[["distance"]]<-error.matrix
+  out[["cluster"]]<-rep(1,rows.dataset)
+  for(i in 1:rows.dataset){
+    out[["cluster"]][i]<-which(cluster.matrix[i,] == 1)
+  }
+  #返回结果，包括中心点坐标，
+  #每个点离每一个中心点的位置以及每个数据点所属的聚类名称
+  return(out)
+}
+```
+
+## 数据标准化
+```{r message=FALSE, warning=FALSE}
+min.max.norm <- function(x){
+  ((x-min(x))/(max(x)-min(x)))
+}
+
+data_x <- apply(data_x,2,min.max.norm)
+```
+
+## k取2到8，评估K
+```{r message=FALSE, warning=FALSE}
+library(fpc) 
+K <- 2:8
+round <- 10 # 每次迭代10次，避免局部最优
+rst <- sapply(K, function(i){
+  print(paste("K=",i))
+  mean(sapply(1:round,function(r){
+    print(paste("Round",r))
+    result <- customKmeans(data_x, i)
+    stats <- cluster.stats(dist(data_x), result$cluster)
+    stats$avg.silwidth
+  }))
+})
+```
+
+## K值轮廓系数图
+```{r message=FALSE, warning=FALSE}
+#可以看到如下的示意图
+plot(K,rst,type='l',main='K', ylab='轮廓系数')   
+#轮廓系数越大越好，所以轮廓为2
+```
+
+## 聚类结果可视化
+```{r message=FALSE, warning=FALSE}
+par(mfrow = c(3,2))
+result <- customKmeans(data_x,k=2)
+plot(data$x1,data$y,col=result$cluster,
+     main="kmeansClustering_x1",pch=19)
+plot(data$x2,data$y,col=result$cluster,
+     main="kmeansClustering_x2",pch=19)
+plot(data$x3,data$y,col=result$cluster,
+     main="kmeansClustering_x3",pch=19)
+plot(data$x4,data$y,col=result$cluster,
+     main="kmeansClustering_x4",pch=19)
+plot(data$x5,data$y,col=result$cluster,
+     main="kmeansClustering_x5",pch=19)
+plot(data$x6,data$y,col=result$cluster,
+     main="kmeansClustering_x6",pch=19)
+#由图像可知，y和x1~x5都有高度相似性，和x6差异性比较高，
+#但是规律并不明显
+
+```
+
+```{r message=FALSE, warning=FALSE}
+result_output <- data.frame(data[,2:7],result$cluster)
+Data1 <- data[,2:7][which(result_output$result.cluster==1),]
+Data2 <- data[,2:7][which(result_output$result.cluster==2),]
+par(mfrow = c(2,2))
+plot(density(Data1[,1]),col="red",main="R")
+plot(density(Data1[,2]),col="red",main="M")
+plot(density(Data2[,1]),col="red",main="R")
+plot(density(Data2[,2]),col="red",main="M")
+```
+# **建模——多元线性回归模型**
+
+## 简单建模
+```{r message=FALSE, warning=FALSE}
+data.lm <- lm(y ~., data)
+data.lm
+```
+## 模型解释
+```{r message=FALSE, warning=FALSE}
+#截距0.535682，x2~x4与y呈正相关;x1,x5与y呈负相关，
+#x6对模型影响较小
+summary(data.lm)
+```
+
+对于x1至x5来说，由于P<0.05，于是在α=0.05水平下，回归系数有统计学意义，y和x1至x5存在直线回归关系。
+残差: 0.05324 
+R方:  0.5888
+
+## 分量剩余图
+```{r message=FALSE, warning=FALSE}
+library(car)
+crPlots(data.lm)
+```
+## 优化模型1
+```{r message=FALSE, warning=FALSE}
+data.lm2 <- step(data.lm)
+summary(data.lm2)
+```
+## 优化模型2
+```{r message=FALSE, warning=FALSE}
+data.lm3<-update(data.lm2, .~. +x3*x4)
+summary(data.lm3)
+```
+## 优化模型3
+```{r message=FALSE, warning=FALSE}
+data.lm4<-update(data.lm3, .~. +x1*x3)
+summary(data.lm4)
+```
+## 优化模型4
+```{r message=FALSE, warning=FALSE}
+data.lm5<-update(data.lm4, .~. +x2*x5)
+summary(data.lm5)
+```
+## 优化模型5
+```{r message=FALSE, warning=FALSE}
+data.lm6<-update(data.lm5, .~. -x5-x3)
+summary(data.lm6)
+```
+## 优化模型6
+```{r message=FALSE, warning=FALSE}
+data.lm7 <- update(data.lm6, .~. +I(x2^2))
+summary(data.lm7)
+```
+## 模型绘图
+```{r message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(data.lm7)
+```
+## 图像解释
+残差和拟合值(左上)，残差和拟合值之间数据点大部分均匀分布在y=0.05两侧，红色线呈现出平稳状态，说明原数据集存在部分异常点如第7835行数据。
+
+残差QQ图(右上)，正态性一般，离群点较多，详见放大图。
+
+标准化残差平方根和拟合值(左下)，数据点分布在y>0正侧，呈现出聚合的分布，红色线呈现出一条平稳下降的曲线并没有明显的形状特征。
+
+标准化残差和杠杆值(右下)，出现红色等高线，
+则说明数据中有特别影响回归结果的异常点。
+
+
+
+## 全局验证
+```{r message=FALSE, warning=FALSE}
+library(gvlma)
+data.gvmodel <- gvlma(data.lm7)
+summary(data.gvmodel)
+```
+结果不理想
+
+## 正态性与异常值
+```{r message=FALSE, warning=FALSE}
+qqPlot(data.lm7,labels = row.names(data),id.method = "identify",
+       simulate = TRUE,main = "Q-Q Plot")
+#正态性一般，离群点较多
+```
+## 去除异常值
+```{r message=FALSE, warning=FALSE}
+outlierTest(data.lm7)
+outlier <- c(5766,7835,876,8067,2202,8270,7462,7461,6845,7463)
+data_new <- data[-outlier,]
+head(data_new)
+```
+
+## 优化模型7
+```{r message=FALSE, warning=FALSE}
+data.lm8 <- lm(y ~ x1 + x2 + x4 + I(x2^2) + x4:x3 + x1:x3 + x2:x5, data_new)
+summary(data.lm8)
+```
+
+## 重复查找异常值
+```{r message=FALSE, warning=FALSE}
+qqPlot(data.lm8,labels = row.names(data),id.method = "identify",
+       simulate = TRUE,main = "Q-Q Plot")
+outlierTest(data.lm8)
+```
+
+## 优化模型8
+```{r message=FALSE, warning=FALSE}
+outlier <- c(8069,8071,7838,7839,6846,1,7464,8070,8221,1870)
+data_new1 <- data_new[-outlier,]
+data.lm9 <- lm(y ~ x1 + x2 + x4 + I(x2^2) + x4:x3 + x1:x3 + x2:x5,
+               data_new1)
+summary(data.lm9)
+```
+## 结论2:模型评价
+模型9比模型8的R方下降，所以用 data.lm8：
+T检验：除了x1, 所有自变量都是非常显著***
+F检验：同样是非常显著，p-value < 2.2e-16
+调整后的R^2：相关性为0.689 
+```{r message=FALSE, warning=FALSE}
+```
+
+## 分析方差相同假设
+```{r message=FALSE, warning=FALSE}
+ncvTest(data.lm8)
+#p值小于0.05，不满足方差相同的假设
+```
+## 分析误差相互独立假设
+```{r message=FALSE, warning=FALSE}
+durbinWatsonTest(data.lm8)
+#p值小于0.05，误差之间并不是相互独立
+```
+## 是否存在多重共线
+```{r message=FALSE, warning=FALSE}
+vif(data.lm8)
+#所有自变量VIF都比较大，可认为存在多重共线性的问题
+```
+
+## 结论3:
+综上所述，大概率需引入降维
+
+# **降维**
+
+## 导入包
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(sqldf)
+library(class)
+# 为数据集增加序号列
+data$id <- c(1:nrow(data))
+```
+
+## 划分训练集与测试集
+```{r message=FALSE, warning=FALSE}
+# 将data集中70%的数据划分为训练集
+data_train <- sample_frac(data, 0.7, replace = TRUE)
+
+# 使用sql语句将剩下的30%花费为测试集
+data_test <- sqldf("
+               select *
+               from data
+               where id not in (
+               select id
+               from data_train
+               )
+               ")
+```
+
+```{r message=FALSE, warning=FALSE}
+# 去除序号列（id）
+data <- data[,-8]
+data_train <- data_train[,-8]
+data_test <- data_test[,-8]
+```
+
+## 碎石图与主成分分析
+```{r message=FALSE, warning=FALSE}
+#对x列主成分分析
+data_train_pca <- princomp(data_train[,2:7])
+screeplot(data_train_pca, npcs = ncol(data_train),type="lines")
+summary(data_train_pca)
+```
+第一行是特征值，越大，它所对应的主成分变量包含的信息就越多
+
+由上图可见四项指标做分析后，给出了6个成分，他们的重要性分别为：0.6259068， 0.2227313， 0.07545228，0.05733950， 0.01429945， 0.004270653，
+累积贡献为：0.6259068， 0.8486381， 0.92409039，0.98142989， 0.99572935， 1.000000000
+
+各个成分的碎石图也如上，可见成份1到成份4的累积贡献已经达到98%，因此采用这4个成份便可充分解释y的基本信息
+
+
+```{r message=FALSE, warning=FALSE}
+data_train_pca$loadings
+#loadings显示的是载荷的内容，这个值实际上是主成分对于原始变量x的系数。
+# Comp.1 = -1*x6
+# Comp.2 = 0.230 * x2 + 0.600 * x4 + 0.762 * x5
+# Comp.3 = 0.387 * x1 + 0.688 * x2 + 0.573 * x3 - 0.135 * x4 - 0.171 * x5 + 0 * x6
+# Comp.4 = 0.278 * x1 + 0.503 * x2 - 0.816 * x3 +0 * x4 + 0 * x5 + 0 * x6
+```
+
+```{r message=FALSE, warning=FALSE}
+new_test <- as.matrix(data_test[,2:7])%*%as.matrix(data_train_pca$loadings[,1:4])
+# 转化为数据框
+new_test <- as.data.frame(new_test)
+head(new_test,10)
+```
+
+```{r message=FALSE, warning=FALSE}
+data_temp<-predict(data_train_pca) 
+plot(data_temp[,1:2])
+```
+
