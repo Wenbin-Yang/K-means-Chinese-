@@ -1,0 +1,16 @@
+title: '**Kobe Bryant Shot Selection**'
+author: "García, Ethan Goldbeck, Aldo, Wenbin Yang"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+---
+
+<center><img
+src="https://github.com/Wenbin-Yang/PI/blob/main/7A7FC1F3-0135-4570-8A3D-044E8EBF833B.jpeg?raw=true">
+</center>
